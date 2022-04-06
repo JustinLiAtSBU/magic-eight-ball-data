@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import requests
+import pycountry
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from tqdm import tqdm
@@ -8,6 +10,7 @@ from termcolor import colored
 
 load_dotenv()
 client = MongoClient(os.getenv('MONGO_DB_CONNECTION_STRING'))
+API_KEY = os.getenv('API_KEY')
 
 
 def get_collection(collection_name):
@@ -15,54 +18,69 @@ def get_collection(collection_name):
     return db[collection_name]
 
 
-def insert_movies(filename):
-    print(f"Resetting movies from movies collection... ", end='')
-    reset_collection(get_collection('movies'))
-    print(colored('done', 'green'))
+def reset_collection(collection):
+    print(f"Resetting {collection}")
+    collection.delete_many({})
 
+
+def supplement_model(model):
+    URL = f'http://www.omdbapi.com/?&apikey={API_KEY}'
+    PARAMS = { 'i': model['tconst'] }
+    res = requests.get(URL, PARAMS)
+    data = res.json()
+    model['genres'] = data['Genre']
+    model['director'] = data['Director']
+    model['actors'] = data['Actors']
+    model['plot'] = data['Plot']
+    model['country'] = data['Country'].split(',')[0]
+    model['awards'] = data['Awards']
+    model['poster'] = data['Poster']
+
+
+def insert_movies(filename):
     print(f"Inserting movies from {filename}...")
-    movies = get_collection('movies')
+    movies = get_collection('motionPictures')
     file = pd.read_csv(filename, low_memory=False)
     columns = list(file.columns)
+    columns.remove('originalTitle')
     for index, row in tqdm(file.iterrows(), total=file.shape[0]):
         movie = {}
         for column in columns:
-            if column == 'genres':
-                movie[column] = row[column].split(',')
-            else:
-                movie[column] = row[column]
+            field = convert_column_to_field(column)
+            movie[field] = row[column]
+        supplement_model(movie)
         movies.insert_one(movie)
     print(colored("done", 'green'))
 
 
 def insert_tv_shows(filename):
-    print(f"Resetting TV shows from tvShows collection... ", end='')
-    reset_collection(get_collection('tvShows'))
-    print(colored('done', 'green'))
-
     print(f"Inserting TV shows from {filename}... ")
-    movies = get_collection('tvShows')
+    tv_shows = get_collection('motionPictures')
     file = pd.read_csv(filename, low_memory=False)
     columns = list(file.columns)
+    columns.remove('originalTitle')
     for index, row in tqdm(file.iterrows(), total=file.shape[0]):
-        movie = {}
+        tv_show = {}
         for column in columns:
-            if column == 'genres':
-                movie[column] = row[column].split(',')
-            else:
-                movie[column] = row[column]
-        movies.insert_one(movie)
+            field = convert_column_to_field(column)
+            tv_show[field] = row[column]
+        supplement_model(tv_show)
+        tv_shows.insert_one(tv_show)
     print(colored("done", 'green'))
 
 
-def reset_collection(collection):
-    collection.delete_many({})
-
-
-def rename_db(original_name, new_name):
-    client.admin.command('copydb', fromdb=original_name, todb=new_name)
-
-
-if __name__ == "__main__":
-    insert_movies('../reducers/output/basic_info_with_ratings_30000_movie.tsv')
-    # insert_tv_shows('../reducers/output/basic_info_with_ratings_30000_tvSeries.tsv')
+def convert_column_to_field(column):
+    field = column
+    if column == 'averageRating':
+        field = 'rating'
+    elif column == 'numVotes':
+        field = 'votes'
+    elif column == 'titleType':
+        field = 'type'
+    elif column == 'primaryTitle':
+        field = 'title'
+    elif column == 'startYear':
+        field = 'year'
+    elif column == 'runtimeMinutes':
+        field = 'runtime'
+    return field

@@ -1,6 +1,7 @@
 import pandas as pd
 
 
+# TODO: Return filename
 def reduce_ratings_by_votes(min):
     output = open(f'reducers/output/ratings_min_votes_{min}.tsv', 'w+')
     ratings = pd.read_csv(
