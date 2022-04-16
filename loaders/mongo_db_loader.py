@@ -35,11 +35,16 @@ def supplement_model(model):
     model['country'] = data['Country'].split(',')[0]
     model['awards'] = data['Awards']
     model['poster'] = data['Poster']
-
+    model['languages'] = [language.strip() for language in data['Language'].split(",")]
+    for rating in data['Ratings']:
+        if rating['Source'] == 'Rotten Tomatoes':
+            model['rottenTomatoes'] = rating['Value']
+        if rating['Source'] == 'Metacritic':
+            model['metacritic'] = rating['Value']
 
 def insert_movies(filename):
     print(f"Inserting movies from {filename}...")
-    movies = get_collection('motionPictures')
+    movies = get_collection('movie')
     file = pd.read_csv(filename, low_memory=False)
     columns = list(file.columns)
     columns.remove('originalTitle')
@@ -49,13 +54,15 @@ def insert_movies(filename):
             field = convert_column_to_field(column)
             movie[field] = row[column]
         supplement_model(movie)
+        movie['genres'] = [genre.strip() for genre in movie['genres'].split(",")]
+        del movie['type']
         movies.insert_one(movie)
     print(colored("done", 'green'))
 
 
 def insert_tv_shows(filename):
     print(f"Inserting TV shows from {filename}... ")
-    tv_shows = get_collection('motionPictures')
+    tv_shows = get_collection('tvShow')
     file = pd.read_csv(filename, low_memory=False)
     columns = list(file.columns)
     columns.remove('originalTitle')
@@ -65,6 +72,8 @@ def insert_tv_shows(filename):
             field = convert_column_to_field(column)
             tv_show[field] = row[column]
         supplement_model(tv_show)
+        tv_show['genres'] = [genre.strip() for genre in tv_show['genres'].split(",")]
+        del tv_show['type']
         tv_shows.insert_one(tv_show)
     print(colored("done", 'green'))
 
